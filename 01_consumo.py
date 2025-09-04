@@ -52,6 +52,11 @@ html_template = f'''
 #iniciar o flask
 app = Flask(__name__)
 
+def getDbConnect():
+    conn = sqlite3.connect(f'{caminhoBanco}{nomeBanco}') 
+    conn.row_factory = sqlite3.Row
+    return conn
+
 @app.route(rotas[0])
 def index():
    return render_template_string(html_template)
@@ -205,6 +210,61 @@ def upload():
    </form>
 '''
 
+@app.route('/apagar_tabela/<nome_tabela>', methods=['GET'])
+def apapagarTabela(nome_tabela):
+    conn = getDbConnect()
+    # realiza o apontamento para o banco que será manipulado
+    cursor = conn.cursor()
+    # Usaremos o try except para controlar possiveis erros
+    # Confirmar antes se a tabela existe
+    cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{nome_tabela}'")
+    # pega o resultado da contagem (0 se não existir e 1 se existir)
+    exist = cursor.fetchone()[0]
+    if not exist :
+        conn.close()
+        return "Tabela não encontrada"
+    
+    try:
+        cursor.execute(f'DROP TABLE "{nome_tabela}"')
+        conn.comit()
+        conn.close()
+        return f"tabela {nome_tabela} Apagada com sucesso!!"
+
+    except Exception as erro:
+        conn.close()
+        return "Não foi possível apagar a tabela erro: {erro}"
+
+
+@app.route(rotas[8], methods=["POST","GET"])
+def ver_tabela():
+    if request.method == "POST":
+        nome_tabela = request.form.get('tabela')
+        if nome_tabela not in ['bebidas', 'vingadores']:
+            return f"<h3>Tabela {nome_tabela} Não encontrada!!</h3><br><a href={rotas[8]}>Voltar</a>"
+        
+        conn =getDbConnect()
+        df = pd.read_sql_query(f"SELECT * from {nome_tabela}", conn)
+        conn.close()
+        tabela_html + df.to_html(clases='table table-striped')
+        return f'''
+            <h3>Conteudo da tabela {nome_tabela}:</h3>
+            {tabela_html}
+            <br><a href={rotas[8]}>Voltar</a>
+        '''
+
+    return render_template_string('''
+        <marquee>Selecione a tabela a ser visualizada:</marquee>
+        <form method="POST">
+        <select>
+            <option value="bebidas">Bebidas</option>
+            <option value="vingadores">Vingadores</option>
+        </select>
+        </form>
+        <br><br> 
+        <input type="submit" value="Consultar Tabela">    
+        <br><a href={{rotas[0]}}>Voltar</a>                      
+
+    ''', rotas=rotas)
 
 #inicia o servidor
 if __name__ == '__main__':
