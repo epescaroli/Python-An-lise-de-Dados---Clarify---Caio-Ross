@@ -217,7 +217,7 @@ def apapagarTabela(nome_tabela):
     cursor = conn.cursor()
     # Usaremos o try except para controlar possiveis erros
     # Confirmar antes se a tabela existe
-    cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{nome_tabela}'")
+    cursor.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{nome_tabela}'")
     # pega o resultado da contagem (0 se não existir e 1 se existir)
     exist = cursor.fetchone()[0]
     if not exist :
@@ -226,7 +226,7 @@ def apapagarTabela(nome_tabela):
     
     try:
         cursor.execute(f'DROP TABLE "{nome_tabela}"')
-        conn.comit()
+        conn.commit()
         conn.close()
         return f"tabela {nome_tabela} Apagada com sucesso!!"
 
@@ -235,36 +235,92 @@ def apapagarTabela(nome_tabela):
         return "Não foi possível apagar a tabela erro: {erro}"
 
 
-@app.route(rotas[8], methods=["POST","GET"])
+@app.route(rotas[8], methods=["POST", "GET"])
 def ver_tabela():
     if request.method == "POST":
         nome_tabela = request.form.get('tabela')
         if nome_tabela not in ['bebidas', 'vingadores']:
             return f"<h3>Tabela {nome_tabela} Não encontrada!!</h3><br><a href={rotas[8]}>Voltar</a>"
         
-        conn =getDbConnect()
-        df = pd.read_sql_query(f"SELECT * from {nome_tabela}", conn)
+        conn = getDbConnect()
+        df = pd.read_sql_query(f"SELECT * FROM {nome_tabela}", conn)
         conn.close()
-        tabela_html + df.to_html(clases='table table-striped')
+        tabela_html = df.to_html(classes='table table-striped')  # <- CORRIGIDO AQUI
         return f'''
-            <h3>Conteudo da tabela {nome_tabela}:</h3>
+            <h3>Conteúdo da tabela {nome_tabela}:</h3>
             {tabela_html}
             <br><a href={rotas[8]}>Voltar</a>
         '''
 
+    # FORMULÁRIO HTML CORRIGIDO
     return render_template_string('''
         <marquee>Selecione a tabela a ser visualizada:</marquee>
         <form method="POST">
-        <select>
+            <label for="tabela">Escolha a tabela abaixo:</label>
+            <select name="tabela">
+                <option value="bebidas">Bebidas</option>
+                <option value="vingadores">Vingadores</option>
+            </select>
+            <br><br> 
+            <input type="submit" value="Consultar Tabela">    
+        </form>
+        <br><a href="{{rotas[0]}}">Voltar</a>                      
+    ''', rotas=rotas)
+
+@app.route(rotas[9], methods=["POST", "GET"])
+def apagar_tabela():
+    if request.method == "POST":
+        nome_tabela = request.form.get('tabela')
+        if nome_tabela not in ['bebidas', 'vingadores']:
+            return f"<h3>Tabela '{nome_tabela}' não encontrada!</h3><br><a href='{rotas[9]}'>Voltar</a>"
+        confirmacao = request.form.get('confirmacao')
+        if confirmacao == "Sim":
+            try:
+                conn = getDbConnect()
+                cursor = conn.cursor()
+                cursor.execute(f'DROP TABLE IF EXISTS "{nome_tabela}"')
+                conn.commit()
+                conn.close()
+                return f"<h3>Tabela '{nome_tabela}' apagada com sucesso!</h3><br><a href='{rotas[9]}'>Voltar</a>"
+            except Exception as e:
+                return f"<h3>Erro ao apagar: {e}</h3><br><a href='{rotas[9]}'>Voltar</a>"
+
+    # Formulário GET para escolher qual tabela apagar
+    return render_template_string('''
+        <html>
+<head>
+    <title><marquee>*** CUIDADO *** - Apagar tabela</marquee></title>
+    <script type="text/javascript">
+        function confirmarExclusao() {
+            var ok = confirm('Tem certeza que deseja apagar a tabela selecionada?');
+            if (ok) {
+                document.getElementById('confirmacao').value = 'Sim';
+                return true;
+            } else {
+                return false;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h3>Selecione a tabela que deseja apagar:</h3>
+    <form method="POST" onsubmit="return confirmarExclusao();">
+        <select name="tabela">
+            <option value="">Selecione</option>
             <option value="bebidas">Bebidas</option>
             <option value="vingadores">Vingadores</option>
         </select>
-        </form>
-        <br><br> 
-        <input type="submit" value="Consultar Tabela">    
-        <br><a href={{rotas[0]}}>Voltar</a>                      
-
+        <br><br>
+        <input type="hidden" name="confirmacao" value="" id="confirmacao">
+        <input type="submit" value="Apagar Tabela">
+    </form>
+    <br><a href="{{ rotas[0] }}">Voltar</a>
+</body>
+</html>
     ''', rotas=rotas)
+
+
+
 
 #inicia o servidor
 if __name__ == '__main__':
