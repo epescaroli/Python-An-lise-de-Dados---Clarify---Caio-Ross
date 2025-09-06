@@ -267,12 +267,12 @@ def ver_tabela():
         <br><a href="{{rotas[0]}}">Voltar</a>                      
     ''', rotas=rotas)
 
-@app.route(rotas[9], methods=["POST", "GET"])
+@app.route(rotas[7], methods=["POST", "GET"])
 def apagar_tabela():
     if request.method == "POST":
         nome_tabela = request.form.get('tabela')
         if nome_tabela not in ['bebidas', 'vingadores']:
-            return f"<h3>Tabela '{nome_tabela}' não encontrada!</h3><br><a href='{rotas[9]}'>Voltar</a>"
+            return f"<h3>Tabela '{nome_tabela}' não encontrada!</h3><br><a href='{rotas[7]}'>Voltar</a>"
         confirmacao = request.form.get('confirmacao')
         if confirmacao == "Sim":
             try:
@@ -281,7 +281,7 @@ def apagar_tabela():
                 cursor.execute(f'DROP TABLE IF EXISTS "{nome_tabela}"')
                 conn.commit()
                 conn.close()
-                return f"<h3>Tabela '{nome_tabela}' apagada com sucesso!</h3><br><a href='{rotas[9]}'>Voltar</a>"
+                return f"<h3>Tabela '{nome_tabela}' apagada com sucesso!</h3><br><a href='{rotas[7]}'>Voltar</a>"
             except Exception as e:
                 return f"<h3>Erro ao apagar: {e}</h3><br><a href='{rotas[9]}'>Voltar</a>"
 
@@ -320,7 +320,342 @@ def apagar_tabela():
     ''', rotas=rotas)
 
 
+@app.route(rotas[9], methods=['GET', 'POST'])
+def vaa_mortes_consumo():
+    metricas_beb = {
+        "Total (L de Alcool)":"total_litles_of_pure_alcohol",
+        "Cerveja (Doses)":"beer_servings",
+        "Destilados (Doses)":"spirit_servings",
+        "Vinho (Doses)":"wine_servings"
 
+    }
+
+    if request.method == "POST":
+        met_beb_key = request.form.get("metrica_beb") or "Total (L de Alcool)"
+        met_beb = metricas_beb.get(met_beb_key, "total_litles_of_pure_alcohol")
+
+        # Semente opcional para reproduzir a mesma distribuição de países nos vingadores
+        try:
+            semente = int(request.form.get("semente"))
+        except:
+            semente = 42
+        sementeAleatoria = random.Random(semente) # Gera o valor aleatório baseado na smente escolhida
+
+        # Lê os dados do SQL
+        with getDbConnect as conn:
+            dfA = pd.read_sql_query('SELECT * FROM vingadores', conn)
+            dfB = pd.read_sql_query('SELECT country, beer_servings, apirit_servings, wine_ servings, total_litles_of_pure_alcohol FROM bebidas', conn)
+        
+        # ---- Mortes dos vingadores
+        # estrategia: somar colunas que contenham o death como treu (case-insensitive)
+        # contaremos não-nulos como 1, ou seja, death1 tem True? vale 1, não tem nada? vale 0
+        death_cols = [c for c in dfA.columns if "death" in c.lower()]
+        if death_cols:
+            dfA["Mortes"] = dfA["death_cols"].notna().astype(int).sum(axis=1)
+        elif "Deaths" in dfA.columns:
+        # fallback obvio
+            dfA["Mortes"] = pd.to_numeric(dfA["Deaths"], errors="coerse").fillna(0).astype(int)
+        else:
+            dfA["Mortes"] = 0
+
+        if "Name/Alias" in dfA.columns:
+            col_name = "Name/Alias"
+        elif "Name" in dfA.columns:
+            col_name = "Name"
+        elif "Alias" in dfA.columns:
+            col_name "Alias"
+        else:
+            possivel_texto = [c for c in dfA.columns if dfA[c].dtype == "object"]
+            col_name = possivel_texto[0] if possivel_texto else dfA.columns[0]
+
+        dfA.rename(columns={col_name: "Personagem"}, inplace=True)
+
+        # --- Sortear um país para cada vingador
+        paises = dfB["country"].dropna().astype(str).to_list()
+        if not paises:
+            return f"<h3>Não há países na tabela de bebidas!</h3><a href={rotas[9]}>Voltar1</a>"
+        
+        dfA["Pais"] = [sementeAleatoria.choice(paises) for _ in range(len(dfA))]
+        dfB_cons = dfB[["country", met_beb]].rename(columns={"country":"Pais",
+                        met_beb : "Consumo"
+        })
+        base = dfA[["Personagem", "Mortes", "Pais"]].merg(dfB_cons, on="Pais", how="left")
+
+        # filtrar apenas linhas validas
+        base = base.dropna(subset=['Consumo'])
+        base["Mortes"] = pd.to_numeric(base["Mortes"], errors="coerse").fillna(0).astype(int)
+        base = base[base["Mortes"] >= 0]
+
+        # Correlação (se possivel)
+        corr_text = ""
+        if base["Consumo"].notna().sum() >=3 and base["Mortes"].notna().sum() >= 3:
+            try:
+                corr = base["Consumo"].corr(base["Mortes"])
+                corr_txt = f" ♣ r = {corr:.3f} "
+            except Exception:
+                pass
+        # Gráfico Scatter 2D: Consumo X Mortes (cor = pais) ---------
+        fig2d = px. Scatter(
+            base,
+            x = "Consumo",
+            y = "Mortes",
+            cor = "Pais",
+            hover_name = "Personagem",
+            hover_data = {
+                "Pais": True,
+                "Consumo": True,
+                "Mortes": True
+                },
+            title = f"Vingadores - Mortes X Consumo de Alcool do país ({met_beb_key}){corr_text}"           
+        )
+        fig2D.update_layout(
+            xaxis_title = f"{met_beb_key}"
+            yaxis_title = "Mortes (contagem)"
+            margin = dict(l=40, r=20, t=70, b=40)
+        )
+        return (
+            "<h3> Grafico 2D --- </h3>"
+            + fig2D.to_html(full_html= false)
+            + "<hr>"
+            + "<h3> --- Grafico 3D --- </h3>"
+            + "<p> Em Breve </p>"
+            + "<hr>"
+            + "<h3> --- Preview dos dados --- </h3>"
+            + "<p> Em Breve </p>"
+            + "<hr>"
+            + f"<a href={rotas[9]}>Voltar</a>"
+            + "<br>"
+            + f"<a href={rotas[9]}>Menu Inicial</a>"
+                       
+
+        )
+
+    return render_template_string('''
+                 
+
+        <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>V.A.A - País X Consumo X Mortes</title>
+    <style>
+        /* Reset e fonte */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f0f4ff, #fdfdfd);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        /* Título */
+        h2 {
+            text-align: center;
+            font-size: 1.8rem;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            animation: fadeSlideDown 1s ease both;
+        }
+
+        /* Animação para o título */
+        @keyframes fadeSlideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Formulário */
+        form {
+            max-width: 450px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 25px 30px;
+            border-radius: 16px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease;
+            opacity: 0;
+            transform: translateY(25px);
+            animation: fadeSlideUp 1s ease forwards;
+            animation-delay: 0.3s;
+        }
+
+        /* Animação para o form */
+        @keyframes fadeSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(25px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        form:hover {
+            transform: translateY(-3px);
+        }
+
+        /* Labels */
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #34495e;
+        }
+
+        /* Select e Inputs */
+        select, input[type="number"] {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        /* Animação de pulsar */
+        @keyframes pulseBorder {
+            0% {
+                box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.6);
+            }
+            70% {
+                box-shadow: 0 0 10px 5px rgba(108, 99, 255, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(108, 99, 255, 0);
+            }
+        }
+
+        select:focus, input[type="number"]:focus {
+            border-color: #6c63ff;
+            outline: none;
+            animation: pulseBorder 1.2s infinite;
+        }
+
+        /* Botão */
+        input[type="submit"] {
+            width: 100%;
+            padding: 12px 0;
+            background: linear-gradient(90deg, #6c63ff, #4facfe);
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease, transform 0.1s ease;
+            opacity: 0;
+            animation: fadeSlideUp 1s ease forwards;
+            animation-delay: 0.6s;
+        }
+
+        input[type="submit"]:hover {
+            background: linear-gradient(90deg, #4facfe, #6c63ff);
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(108, 99, 255, 0.4);
+        }
+
+        /* Efeito press (clicado) */
+        input[type="submit"]:active {
+            transform: scale(0.96);
+            box-shadow: 0 3px 8px rgba(108, 99, 255, 0.3) inset;
+        }
+
+        /* Texto explicativo */
+        p {
+            max-width: 700px;
+            margin: 20px auto;
+            text-align: center;
+            line-height: 1.5;
+            color: #555;
+            opacity: 0;
+            animation: fadeSlideUp 1s ease forwards;
+            animation-delay: 0.9s;
+        }
+
+        /* Link voltar */
+        a {
+            display: inline-block;
+            margin: 20px auto;
+            text-decoration: none;
+            padding: 10px 18px;
+            border-radius: 10px;
+            background: #ecf0f1;
+            color: #2c3e50;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            opacity: 0;
+            animation: fadeSlideUp 1s ease forwards;
+            animation-delay: 1.2s;
+        }
+
+        a:hover {
+            background: #6c63ff;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+        }
+
+        /* Rodapé */
+        footer {
+            margin-top: 40px;
+            padding: 15px 0;
+            border-top: 2px solid #6c63ff;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1rem;
+            color: #6c63ff;
+            background: #f9f9ff;
+            letter-spacing: 2px;
+            opacity: 0;
+            animation: fadeSlideUp 1s ease forwards;
+            animation-delay: 1.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>V.A.A - País X Consumo X Mortes</h2>
+
+    <form method="POST">
+        <label for="metrica_beb">Selecione a métrica:</label>
+        <select name="metrica_beb" id="metrica_beb">
+            {% for metrica in metricas_beb.keys() %}
+                <option value='{{metrica}}'>{{metrica}}</option>
+            {% endfor %}
+        </select>
+
+        <label for="semente"><b>semente:</b> (<i>opcional, p/ reprodutubilidade</i>)</label>
+        <input type="number" name="semente" id="semente" value="42">
+
+        <input type="submit" value="-- Gerar Graficos --">
+    </form>
+
+    <p>
+        Esta visão sorteie um país para cada vingador, soma as mortes dos personagens e anexa o consumo de álcool do país, 
+        ao fim plota um Scatter 2D (Consumo X Mortes) e um gráfico 3D (País X Mortes).
+    </p>
+
+    <a href="{{rotas[0]}}">Voltar</a>
+
+    <footer>
+        <p>PYTHONS DE ELITE</p>
+    </footer>
+
+</body>
+</html>
+
+
+
+
+''', metricas_beb = metricas_beb, rotas=rotas)
 
 #inicia o servidor
 if __name__ == '__main__':
