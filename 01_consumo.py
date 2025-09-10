@@ -19,7 +19,7 @@ dfDrinks = pd.read_csv(f'{caminhoBanco}{tabelaA}')
 dfavengers = pd.read_csv(f'{caminhoBanco}{tabelaB}', encoding='latin1')
 # outros exemplos de encodings: utf-8, cp1256, iso8859-1
 
-# criamos o banco d edados em SQL caso nao exista
+# criamos o banco de dados em SQL caso nao exista
 conn = sqlite3.connect(f'{caminhoBanco}{nomeBanco}')
 
 dfDrinks.to_sql("bebidas", conn, if_exists="replace", index=False)
@@ -354,7 +354,7 @@ def vaa_mortes_consumo():
             dfA["Mortes"] = dfA["death_cols"].notna().astype(int).sum(axis=1)
         elif "Deaths" in dfA.columns:
         # fallback obvio
-            dfA["Mortes"] = pd.to_numeric(dfA["Deaths"], errors="coerse").fillna(0).astype(int)
+            dfA["Mortes"] = pd.to_numeric(dfA["Deaths"], errors="coerce").fillna(0).astype(int)
         else:
             dfA["Mortes"] = 0
 
@@ -383,7 +383,7 @@ def vaa_mortes_consumo():
 
         # filtrar apenas linhas validas
         base = base.dropna(subset=['Consumo'])
-        base["Mortes"] = pd.to_numeric(base["Mortes"], errors="coerse").fillna(0).astype(int)
+        base["Mortes"] = pd.to_numeric(base["Mortes"], errors="coerce").fillna(0).astype(int)
         base = base[base["Mortes"] >= 0]
 
         # Correlação (se possivel)
@@ -395,7 +395,7 @@ def vaa_mortes_consumo():
             except Exception:
                 pass
         # Gráfico Scatter 2D: Consumo X Mortes (cor = pais) ---------
-        fig2d = px. Scatter(
+        fig2d = px.scatter(
             base,
             x = "Consumo",
             y = "Mortes",
